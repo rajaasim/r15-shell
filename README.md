@@ -43,7 +43,7 @@ cargo run -- --room-id 15 --cookie-file ./cookie_header.txt
 ## Shell Commands
 
 - `/help`
-- `/cookie <raw cookie header>`
+- `/cookie <cookie text>`
 - `/cookie-file <path>`
 - `/show-cookie`
 - `/quit`
@@ -52,7 +52,7 @@ Any input that does not start with `/` is sent as a chat message.
 
 ## Cookie Setup
 
-`r15-shell` expects the raw cookie header value from a working `chat.stackoverflow.com` session.
+`r15-shell` accepts either a normal `Cookie` header or browser-style `Set-Cookie` text from a working `chat.stackoverflow.com` session.
 
 Example:
 
@@ -60,7 +60,17 @@ Example:
 cf_clearance=...; chatusr=...; __cf_bm=...
 ```
 
-Do not include the literal `Cookie:` prefix.
+This also works:
+
+```text
+chatusr=t=...&p=[53|True]; expires=Sun, 27 Sep 2026 13:42:34 GMT; path=/; secure; httponly
+```
+
+The shell now:
+
+- ignores `expires`, `path`, `secure`, `httponly`, and similar cookie attributes
+- accepts `Cookie:` and `Set-Cookie:` prefixes
+- merges pasted cookies into the existing saved cookie header instead of replacing everything blindly
 
 ## Releases
 

@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
+use std::{collections::HashMap, collections::HashSet};
 
 use anyhow::{bail, Context, Result};
 
@@ -161,7 +162,8 @@ fn run_input_loop(
         }
 
         if let Some(value) = trimmed.strip_prefix("/cookie ") {
-            let cleaned = sanitize_cookie(value);
+            let existing = cookie.read().expect("cookie lock poisoned").clone();
+            let cleaned = normalize_cookie_input(value, existing.as_deref());
             if cleaned.is_empty() {
                 println!("cookie value is empty");
                 continue;
@@ -177,7 +179,8 @@ fn run_input_loop(
             let cookie_path = PathBuf::from(path.trim());
             let loaded = fs::read_to_string(&cookie_path)
                 .with_context(|| format!("failed to read cookie file {}", cookie_path.display()))?;
-            let cleaned = sanitize_cookie(&loaded);
+            let existing = cookie.read().expect("cookie lock poisoned").clone();
+            let cleaned = normalize_cookie_input(&loaded, existing.as_deref());
             if cleaned.is_empty() {
                 bail!("cookie file was empty");
             }
@@ -212,8 +215,8 @@ fn run_input_loop(
 
 fn print_help() {
     println!("/help                show this help");
-    println!("/cookie <value>      save a raw Cookie header value");
-    println!("/cookie-file <path>  load a cookie from a file");
+    println!("/cookie <value>      save or merge cookies from Cookie/Set-Cookie text");
+    println!("/cookie-file <path>  load and merge cookies from a file");
     println!("/show-cookie         show a masked cookie preview");
     println!("/quit                exit the shell");
     println!("anything else        send a chat message");
@@ -242,7 +245,7 @@ fn load_cookie(path: &Path) -> Result<Option<String>> {
     }
 
     let value = fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let cleaned = sanitize_cookie(&value);
+    let cleaned = normalize_cookie_input(&value, None);
     if cleaned.is_empty() {
         Ok(None)
     } else {
@@ -256,12 +259,104 @@ fn save_cookie(path: &Path, cookie: &str) -> Result<()> {
     Ok(())
 }
 
-fn sanitize_cookie(value: &str) -> String {
-    value
-        .trim()
-        .trim_start_matches("Cookie:")
-        .trim()
-        .to_string()
+fn normalize_cookie_input(value: &str, existing_cookie: Option<&str>) -> String {
+    let mut merged_pairs = parse_cookie_pairs(existing_cookie.unwrap_or_default());
+    let incoming_pairs = parse_cookie_pairs(value);
+
+    if incoming_pairs.is_empty() {
+        return String::new();
+    }
+
+    let mut index_by_name = HashMap::new();
+    for (index, (name, _)) in merged_pairs.iter().enumerate() {
+        index_by_name.insert(name.to_ascii_lowercase(), index);
+    }
+
+    for (name, cookie_value) in incoming_pairs {
+        let lowered = name.to_ascii_lowercase();
+        if let Some(index) = index_by_name.get(&lowered).copied() {
+            merged_pairs[index].1 = cookie_value;
+        } else {
+            index_by_name.insert(lowered, merged_pairs.len());
+            merged_pairs.push((name, cookie_value));
+        }
+    }
+
+    merged_pairs
+        .into_iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn parse_cookie_pairs(value: &str) -> Vec<(String, String)> {
+    let mut parsed = Vec::new();
+    let mut seen_names = HashSet::new();
+
+    for line in value.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let candidate = strip_cookie_prefix(trimmed);
+        for segment in candidate.split(';') {
+            let part = segment.trim();
+            if part.is_empty() {
+                continue;
+            }
+
+            let Some((raw_name, raw_value)) = part.split_once('=') else {
+                continue;
+            };
+
+            let name = raw_name.trim();
+            let lowered = name.to_ascii_lowercase();
+            if is_cookie_attribute(&lowered) {
+                continue;
+            }
+
+            let cookie_value = raw_value.trim();
+            if cookie_value.is_empty() {
+                continue;
+            }
+
+            if seen_names.insert(lowered) {
+                parsed.push((name.to_string(), cookie_value.to_string()));
+            }
+        }
+    }
+
+    parsed
+}
+
+fn strip_cookie_prefix(value: &str) -> &str {
+    let trimmed = value.trim();
+    if let Some(rest) = trimmed
+        .strip_prefix("Cookie:")
+        .or_else(|| trimmed.strip_prefix("cookie:"))
+        .or_else(|| trimmed.strip_prefix("Set-Cookie:"))
+        .or_else(|| trimmed.strip_prefix("set-cookie:"))
+    {
+        rest.trim()
+    } else {
+        trimmed
+    }
+}
+
+fn is_cookie_attribute(name: &str) -> bool {
+    matches!(
+        name,
+        "expires"
+            | "max-age"
+            | "domain"
+            | "path"
+            | "secure"
+            | "httponly"
+            | "samesite"
+            | "priority"
+            | "partitioned"
+    )
 }
 
 fn mask_cookie(cookie: &str) -> String {
