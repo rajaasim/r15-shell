@@ -30,7 +30,10 @@ pub fn run(args: Args) -> Result<()> {
 
     match cookie.read().expect("cookie lock poisoned").as_ref() {
         Some(value) => println!("cookie: loaded ({})", mask_cookie(value)),
-        None => println!("cookie: not set"),
+        None => {
+            println!("cookie: not set");
+            print_cookie_not_set_hint();
+        }
     }
 
     println!();
@@ -127,6 +130,10 @@ fn run_input_loop(
     let stdin = io::stdin();
 
     loop {
+        if cookie.read().expect("cookie lock poisoned").is_none() {
+            print_cookie_not_set_hint();
+        }
+
         print!("r15> ");
         io::stdout().flush().context("failed to flush stdout")?;
 
@@ -203,7 +210,7 @@ fn run_input_loop(
             .ok_or_else(|| anyhow::anyhow!("set a cookie first with /cookie or /cookie-file"))?;
 
         match chat_client.send_message(trimmed, &cookie_value) {
-            Ok(message_id) => println!("sent message #{message_id}"),
+            Ok(_) => println!("[sent]"),
             Err(error) => eprintln!("send failed: {error:#}"),
         }
 
@@ -220,6 +227,12 @@ fn print_help() {
     println!("/show-cookie         show a masked cookie preview");
     println!("/quit                exit the shell");
     println!("anything else        send a chat message");
+}
+
+fn print_cookie_not_set_hint() {
+    println!("cookie not set");
+    println!("set one with /cookie <cookie text> or /cookie-file <path>");
+    println!();
 }
 
 fn print_message(kind: &str, message: &ChatMessage) {
