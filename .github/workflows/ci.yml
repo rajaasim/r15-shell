@@ -67,14 +67,15 @@ jobs:
       - name: Download workflow artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           mkdir -p release-builds/r15-shell-linux
           mkdir -p release-builds/r15-shell-macos
           mkdir -p release-builds/r15-shell-windows
-          gh run download "$GITHUB_RUN_ID" -n r15-shell-linux -D release-builds/r15-shell-linux
-          gh run download "$GITHUB_RUN_ID" -n r15-shell-macos -D release-builds/r15-shell-macos
-          gh run download "$GITHUB_RUN_ID" -n r15-shell-windows -D release-builds/r15-shell-windows
+          gh run download "$GITHUB_RUN_ID" --repo "$GH_REPO" -n r15-shell-linux -D release-builds/r15-shell-linux
+          gh run download "$GITHUB_RUN_ID" --repo "$GH_REPO" -n r15-shell-macos -D release-builds/r15-shell-macos
+          gh run download "$GITHUB_RUN_ID" --repo "$GH_REPO" -n r15-shell-windows -D release-builds/r15-shell-windows
 
       - name: Create release archives
         shell: bash
