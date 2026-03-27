@@ -1,5 +1,8 @@
 name: ci
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   push:
     branches:
@@ -19,12 +22,15 @@ jobs:
           - os: ubuntu-latest
             artifact_name: r15-shell-linux
             binary_path: target/release/r15-shell
+            binary_name: r15-shell
           - os: macos-latest
             artifact_name: r15-shell-macos
             binary_path: target/release/r15-shell
+            binary_name: r15-shell
           - os: windows-latest
             artifact_name: r15-shell-windows
             binary_path: target/release/r15-shell.exe
+            binary_name: r15-shell.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -38,8 +44,17 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Upload binary artifact
+      - name: Package build folder
+        shell: pwsh
+        run: |
+          $buildDir = Join-Path "build" "${{ matrix.artifact_name }}"
+          New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+          Copy-Item "${{ matrix.binary_path }}" (Join-Path $buildDir "${{ matrix.binary_name }}")
+          Copy-Item "README.md" (Join-Path $buildDir "README.md")
+          Copy-Item "LICENSE" (Join-Path $buildDir "LICENSE")
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.binary_path }}
+          path: build/${{ matrix.artifact_name }}
