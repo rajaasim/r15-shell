@@ -72,6 +72,8 @@ GitHub Actions builds release binaries for:
 
 Artifacts are available from the Actions tab for each workflow run.
 
+Pushing a tag like `v0.1.0` also creates a GitHub Release and attaches ZIP downloads for all three platforms.
+
 ## Notes
 
 - Message loading currently uses the room transcript page rather than the websocket feed.
